@@ -215,9 +215,7 @@ public class PrintPurchaseOrderSlip_Type3 extends GenericReport {
         pstmt = conn.prepareStatement(query);
         rs = pstmt.executeQuery();
 
-        int i = 0;
         while (rs != null && rs.next()) {
-            i++;
             pohdrSQL.populate(rs);
             //added by joan for GST enhancement 2014-12-15
             if (pohdrSQL.PO_CREATE_METHOD().equals("E") || pohdrSQL.PO_CREATE_METHOD().equals("R")) {
@@ -410,11 +408,9 @@ public class PrintPurchaseOrderSlip_Type3 extends GenericReport {
         tableSuperHdr = createTableSuperHdr();
         tableHdr = createTableHdr();
         tableDataHdr = createDataHdrTable();
-        int i = 0;
         while (rs != null && rs.next()) {
             //podetSQL.populate(rs);
             consoPodetSQL.populate(rs);
-            i++;
             
             if (first_time == true) {
                 printIncreaseOneLine();
@@ -959,10 +955,10 @@ public class PrintPurchaseOrderSlip_Type3 extends GenericReport {
             strNetTotalGst = "NET TOTAL INCL. GST";
             strCostTotWithVAT = currencyConverter.format(dblTotVAT).toString();
         } else {
-            strGstAmount = "";
-            strTotVAT = "";
-            strNetTotalGst = "";
-            strCostTotWithVAT = "";
+            strGstAmount = "\n";
+            strTotVAT = "\n";
+            strNetTotalGst = "\n";
+            strCostTotWithVAT = "\n";
         }
 
         cell = new Cell(new Phrase(strGstAmount, FontChinese)); //edit by joan for GST enhancement
