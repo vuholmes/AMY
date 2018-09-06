@@ -14,13 +14,8 @@
 package qrcom.PROFIT.reports.CC;
 
 import java.io.*;
-
 import java.sql.*;
-
 import java.text.SimpleDateFormat;
-
-import java.util.Calendar;
-
 import com.lowagie.text.*;
 import com.lowagie.text.pdf.*;
 
@@ -29,12 +24,10 @@ import qrcom.PROFIT.shared.constants.IReport;
 
 import qrcom.util.HParam;
 import qrcom.util.qrMisc;
-import qrcom.util.qrMath;
-import qrcom.util.CurrencyConverter;
-//import qrcom.util.ICUNumberFormat;
 import qrcom.PROFIT.files.info.*;
 import qrcom.PROFIT.reports.GenericReport;
-import qrcom.PROFIT.files.info.logger.Taxinvlogger;
+import qrcom.util.ejb.jdbc.support.Parameters;
+import qrcom.util.ejb.jdbc.support.StatementManager;
 
 public class ConsTaxInvRpt extends GenericReport {
     private boolean test_run = false;
@@ -141,6 +134,8 @@ public class ConsTaxInvRpt extends GenericReport {
     private String aryWordWrap[] = null;
     private String formula[] = null;
 
+    private TaxrptctrlSQL taxrptctrlSQL = null;
+    private static final String DOC_TYPE = "Concessionaire Tax Invoice";
     private String strReportFormat = "";
 
     private ConsTaxInvRpt() {
@@ -195,6 +190,7 @@ public class ConsTaxInvRpt extends GenericReport {
         coysubmstSQL = new CoysubmstSQL(conn);
         strmstSQL = new StrmstSQL(conn);
         stmt = conn.createStatement();
+        taxrptctrlSQL = new TaxrptctrlSQL(conn);
     }
 
     private void initTotal() throws Exception {
@@ -309,22 +305,12 @@ public class ConsTaxInvRpt extends GenericReport {
         document.open();
     }
 
-    private String getPrintAllHeaderQuery(String colDateCrlName) throws SQLException {
-        String selectMoreColumn = "";
-        String leftJoinTaxrptCtrl = "";
-        if (colDateCrlName != null) {
-            selectMoreColumn = ", Nvl(R.RPT_FORMAT,2) RPT_FORMAT ";
-            leftJoinTaxrptCtrl =
-                " Left JOIN TAXRPTCTRL R ON T." + colDateCrlName + " BETWEEN R.FR_UPDATED_DT " +
-                " AND R.TO_UPDATED_DT AND R.DOC_TYPE='Concessionaire Tax Invoice' ";
-        }
-        
+    private String getPrintAllHeaderQuery() throws SQLException {
         String query =
             "SELECT T.*, " + "REPLACE(REPLACE(REPLACE((SELECT Translate(P.VNM_VDTVL, 'FSI', '!^?') " +
             "FROM PROFITVV P " +
             "WHERE VNM = 'SYSTaxInvFormula' AND P.COY = T.COY), '!', T.FORM), '^', T.SERIAL_NO), '?', T.INVOICE_NO) AS INV_NO " +
-            selectMoreColumn +
-            "FROM TAXINV T " + leftJoinTaxrptCtrl;
+            "FROM TAXINV T ";
 
         String where = "WHERE T.DOC_TYPE = 'CM' " + "AND T.INV_STATUS = 'U' ";
 
@@ -383,21 +369,12 @@ public class ConsTaxInvRpt extends GenericReport {
         return (query);
     }
 
-    private String getHeaderQuery(int count, String colDateCrlName) throws SQLException {
-        String selectMoreColumn = "";
-        String leftJoinTaxrptCtrl = "";
-        if (colDateCrlName != null) {
-            selectMoreColumn = ", Nvl(R.RPT_FORMAT,2) RPT_FORMAT ";
-            leftJoinTaxrptCtrl =
-                " Left JOIN TAXRPTCTRL R ON T." + colDateCrlName + " BETWEEN R.FR_UPDATED_DT " +
-                " AND R.TO_UPDATED_DT AND R.DOC_TYPE='Concessionaire Tax Invoice' ";
-        }
-        
+    private String getHeaderQuery(int count) throws SQLException {        
         String query =
             "SELECT T.*, " + "REPLACE(REPLACE(REPLACE((SELECT Translate(P.VNM_VDTVL, 'FSI', '!^?') " +
             "FROM PROFITVV P " +
             "WHERE VNM = 'SYSTaxInvFormula' AND P.COY = T.COY), '!', T.FORM), '^', T.SERIAL_NO), '?', T.INVOICE_NO) AS INV_NO " +
-            selectMoreColumn + "FROM TAXINV T " + leftJoinTaxrptCtrl;
+            "FROM TAXINV T ";
 
         String where = "WHERE T.DOC_TYPE = 'CM' " + "AND T.INV_STATUS = 'U' ";
 
@@ -579,10 +556,8 @@ public class ConsTaxInvRpt extends GenericReport {
     private void printConcessTaxInvoice(int num) throws Exception {
         String strHdrQuery = "";
         String strDetQuery = "";
-
-        String colDateCrlName = getDateCrlCol();
         
-        strHdrQuery = getHeaderQuery(num, colDateCrlName);
+        strHdrQuery = getHeaderQuery(num);
         psHdr = conn.prepareStatement(strHdrQuery);
         rsHdr = psHdr.executeQuery();
 
@@ -617,8 +592,8 @@ public class ConsTaxInvRpt extends GenericReport {
             getCOYSUBMST(taxinvSQL.COY(), taxinvSQL.COY_SUB());
             getSTRMST(taxinvSQL.STORE());
 
-            strReportFormat = rsHdr.getString("RPT_FORMAT");
-
+            getTaxRptFormat();
+                
             strDetQuery = getDetailQuery(num, "VALUE");
             psDet = conn.prepareStatement(strDetQuery);
             psDet.setString(1, rsHdr.getString("INVOICE_NO"));
@@ -721,9 +696,7 @@ public class ConsTaxInvRpt extends GenericReport {
         int countValue = 1;
         int totalData = 0;
 
-        String colDateCrlName = getDateCrlCol();
-
-        strHdrQuery = getPrintAllHeaderQuery(colDateCrlName);
+        strHdrQuery = getPrintAllHeaderQuery();
         psHdr = conn.prepareStatement(strHdrQuery);
         rsHdr = psHdr.executeQuery();
 
@@ -734,7 +707,7 @@ public class ConsTaxInvRpt extends GenericReport {
             getCOYSUBMST(taxinvSQL.COY(), taxinvSQL.COY_SUB());
             getSTRMST(taxinvSQL.STORE());
 
-            strReportFormat = rsHdr.getString("RPT_FORMAT");
+            getTaxRptFormat();
             
             strDetQuery = getPrintAllDetailQuery("COUNT");
             psDet = conn.prepareStatement(strDetQuery);
@@ -858,19 +831,44 @@ public class ConsTaxInvRpt extends GenericReport {
         }
     }
 
-    private String getDateCrlCol() throws Exception {
-        String strDateCtrlCol = null;
-        String query = "SELECT DATE_CTRL FROM taxrptctrl WHERE DOC_TYPE='Concessionaire Tax Invoice' AND ROWNUM = 1";
-        PreparedStatement pstmt = conn.prepareStatement(query);
-        ResultSet rs = pstmt.executeQuery();
-        if (rs != null && rs.next()) {
-            strDateCtrlCol = rs.getString("DATE_CTRL");
-        }
-        closePreparedStatement(pstmt);
-        closeResultSet(rs);
-        return strDateCtrlCol;
-    }
+    private void getTaxRptFormat() throws SQLException {
+        StatementManager manager = null;
+        String query;
+        Parameters parameters;
+        String strDateCtrl;
+        Date updatedDate = null;
+        taxrptctrlSQL.setDOC_TYPE(DOC_TYPE);
 
+        if (taxrptctrlSQL.getDateCtrlByDocType() > 0) {
+            strDateCtrl = taxrptctrlSQL.DATE_CTRL();
+            if (strDateCtrl != null) {
+                try {
+                    manager = StatementManager.newInstance(conn);
+                    query = "SELECT " + strDateCtrl + " FROM TAXINV WHERE PROCESS_ID = ? AND DOCUMENT_NO= ?";
+                    parameters = Parameters.builder().add(taxinvSQL.PROCESS_ID()).add(taxinvSQL.DOCUMENT_NO());
+                    ResultSet rs = manager.select(query, parameters);
+
+                    if (rs != null && rs.next()) {
+                        updatedDate = rs.getDate(strDateCtrl);
+                    }
+
+                    if (updatedDate != null) {
+                        if (taxrptctrlSQL.getByDateRange(updatedDate) > 0) {
+                            strReportFormat = taxrptctrlSQL.RPT_FORMAT();
+                        }
+                    }
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                } finally {
+                    if (manager != null) {
+                        manager.close(false);
+                        manager = null;
+                    }
+                }
+            }
+        }
+    }
+    
     private void printNewPage() throws Exception {
         document.newPage();
         dbltotal = 0;
